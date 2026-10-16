@@ -1,0 +1,42 @@
+# decomp.wtf as a service: the Docker deployment this fork was shaped for.
+#
+# Copy this file and .env.example into your app directory and bring it up:
+#     cp docker/compose.yaml docker/.env.example <app-dir>/   # then edit <app-dir>/.env
+#     docker compose -f <app-dir>/compose.yaml up -d --build
+#     docker compose -f <app-dir>/compose.yaml exec decomp decomp url
+#
+# Differences from the root docker-compose.yml (which is the same app, in its simplest form):
+#   - the front door's hostname is declared (DECOMP_ALLOWED_HOSTS), because the app refuses any
+#     Host header outside 127.0.0.1/localhost with 403 "bad host";
+#   - the image tag is pinned and the install is identified (DECOMP_INSTALL_ID), so a rebuild
+#     reaches the volume instead of being silently reused;
+#   - the network subnet is pinned, which a host running many stacks needs (Docker's default
+#     address pools get exhausted, and a new implicit network then fails to allocate);
+#   - the games directory is mounted read-only at /roms.
+name: decomp-wtf
+
+services:
+  decomp:
+    build:
+      context: ${DECOMP_CHECKOUT:-..}        # the checkout the image is built from
+      dockerfile: site/public/Dockerfile
+    image: decomp-wtf:0.10.6-fork3           # bump with DECOMP_INSTALL_ID on every rebuild
+    container_name: decomp-wtf
+    restart: unless-stopped
+    init: true
+    environment:
+      DECOMP_PORT: "6464"
+      DECOMP_INSTALL_ID: "${DECOMP_INSTALL_ID}"   # changing it makes the next start reinstall
+      DECOMP_ALLOWED_HOSTS: "${DECOMP_ALLOWED_HOSTS}"
+    ports:
+      - "127.0.0.1:6464:6464"
+    volumes:
+      - decomp-wtf-home:/home/decomp
+      - ${DECOMP_ROMS}:${DECOMP_ROMS_CONTAINER:-/roms}:ro
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${DECOMP_SUBNET:-10.79.0.0/24}
+volumes:
+  decomp-wtf-home:

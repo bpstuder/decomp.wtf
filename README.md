@@ -12,6 +12,36 @@ Thanks to everyone who tried it, reported bugs and sent fixes.
 
 ---
 
+## This is a fork
+
+This repository is [bpstuder's fork](https://github.com/bpstuder/decomp.wtf) of the discontinued
+project above. The upstream tree is unchanged at `575b4a3`; everything below this line is work done
+on the fork to run it as a service. (Upstream's notice and the original README stay as they are.)
+
+What this fork adds, so far:
+
+- **A Docker deployment you can actually operate** — `site/public/Dockerfile` builds the checkout's
+  own source into the image and the app installs itself from that copy, so nothing contacts GitHub
+  or decomp.wtf's download site. `docker/` holds the server deployment: pinned image tag, the front
+  door's hostname declared, the install identified so a rebuild lands, the games directory mounted
+  read-only. Recipe and the front-door steps: [`docker/README.md`](docker/README.md).
+- **`DECOMP_ALLOWED_HOSTS`** — the app refuses any `Host` header outside `127.0.0.1`/`localhost`
+  with `403 bad host`, so behind a reverse proxy or Tailscale `serve` it answers 403 to everyone.
+  The environment now declares the names it is published under.
+- **No update trap** — installing from a folder (or an image) records update channel `image`
+  instead of `release`, so the app never offers to replace the fork with someone else's build.
+- **`ld.lld` in `linux-base.sh`** — the repo's demo ROM and half its tests need it and used to skip
+  themselves silently.
+- **The fork is the update channel**: `REPO`/`--repo` default to `bpstuder/decomp.wtf` (still
+  overridable with `DECOMP_REPO`).
+
+If you fork this again: it is still MIT, it still contains no game code and no ROMs except the
+CC0+zlib demo described under [Install](#install), and the same request
+applies — use only games you own, keep the decompiled code to yourself, and respect the rules of
+the projects you work with.
+
+---
+
 <p align="center">
   <a href="https://decomp.wtf">
     <picture>

@@ -7,6 +7,11 @@
 # What it does: installs the few system programs decomp.wtf and the agent CLIs use (git, Node.js for npm-installed
 # agents, the 32-bit C library for old compilers), makes the user "decomp" (uid 1000), and puts a `decomp` command
 # in /usr/local/bin that starts decomp.wtf from that user's install (install.sh puts it in ~/.local).
+#
+# `llvm` is here so the repository's own demo ROM and its tests can build and run in this image: the
+# N64 demo projects/demo-rom/build.py links with ld.lld and converts the ELF with llvm-objcopy, and
+# tests/test_rom.py, tests/test_app_server.py and others skip themselves when the tools are missing,
+# which silently halves the test suite on this image.
 set -eu
 
 MODE="${1:-docker}"
@@ -19,7 +24,7 @@ echo "> system packages"
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   ca-certificates curl git xz-utils zstd unzip bzip2 file procps less nano bash python3 \
-  nodejs npm libc6-i386 lib32stdc++6 lib32z1 locales >/dev/null
+  nodejs npm libc6-i386 lib32stdc++6 lib32z1 locales llvm lld >/dev/null
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 

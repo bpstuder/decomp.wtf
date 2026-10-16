@@ -15,13 +15,13 @@ services:
     build:
       context: ${DECOMP_CHECKOUT:-.}        # repository root; override for a deployment elsewhere
       dockerfile: site/public/Dockerfile
-    image: decomp-wtf:0.10.6-fork2
+    image: decomp-wtf:0.10.6-fork3
     container_name: decomp-wtf
     restart: unless-stopped
     init: true
     environment:
       DECOMP_PORT: "6464"
-      DECOMP_INSTALL_ID: "20261016-fork2"   # bump it: the volume's install is redone from the image
+      DECOMP_INSTALL_ID: "20261016-fork3"   # bump it: the volume's install is redone from the image
       DECOMP_ALLOWED_HOSTS: "${DECOMP_ALLOWED_HOSTS:-}"
     ports:
       - "127.0.0.1:6464:6464"
