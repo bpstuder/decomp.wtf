@@ -2,21 +2,27 @@
 #   docker compose exec decomp decomp url     the address that opens it (signed in)
 # For a team room at your own address, also publish the room port (decomp share <project> --address ...).
 #
-# Fork (bpstuder/decomp.wtf): the app installs itself inside the container from this fork's `main` branch
-# on GitHub, so both a restart's reinstall and `decomp update` follow the fork rather than the discontinued
-# upstream. DECOMP_REPO is resolved by site/public/install.sh. Set DECOMP_SOURCE to a folder instead of
-# branch:main to install from a mounted checkout while developing.
+# The image builds from the repository root and bakes the fork's source in, so the app installs
+# itself from the image on first start: no GitHub, no decomp.wtf/dl, no branch channel. An update
+# is a rebuild + redeploy; bump DECOMP_INSTALL_ID to make the volume's install be redone.
+#
+# Behind a front door (Tailscale `serve`, a reverse proxy) the browser arrives with that name as
+# its Host header, which the app refuses with 403 "bad host" unless the name is in
+# DECOMP_ALLOWED_HOSTS. A comma- or space-separated list, e.g. "decomp.jaguar-duck.ts.net".
 name: decomp-wtf
 services:
   decomp:
-    build: site/public
+    build:
+      context: ${DECOMP_CHECKOUT:-.}        # repository root; override for a deployment elsewhere
+      dockerfile: site/public/Dockerfile
+    image: decomp-wtf:0.10.6-fork2
     container_name: decomp-wtf
     restart: unless-stopped
     init: true
     environment:
       DECOMP_PORT: "6464"
-      DECOMP_SOURCE: branch:main     # branch:<name> on the fork, "release", or a folder path
-      DECOMP_REPO: bpstuder/decomp.wtf
+      DECOMP_INSTALL_ID: "20261016-fork2"   # bump it: the volume's install is redone from the image
+      DECOMP_ALLOWED_HOSTS: "${DECOMP_ALLOWED_HOSTS:-}"
     ports:
       - "127.0.0.1:6464:6464"
     volumes:

@@ -97,7 +97,12 @@ case "$SOURCE" in
       COMMIT="$(git -c safe.directory='*' -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
       [ "$BRANCH" = HEAD ] && BRANCH=""
       [ -n "$BRANCH" ] && CHANNEL=branch
-    fi ;;
+    fi
+    # A folder without a tracked branch (the Docker image bakes the source in this way): there is
+    # nothing to update *from* — the image is the artefact. Channel "image" makes the app say so
+    # instead of offering the release channel, which would install someone else's build.
+    if [ "$CHANNEL" != branch ]; then CHANNEL=image; fi
+    ;;
 esac
 
 resolve_branch() {  # the branch's newest commit, installed from GitHub's archive of it

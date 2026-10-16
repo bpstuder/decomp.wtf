@@ -433,10 +433,10 @@ def main(argv: list[str] | None = None) -> int:
     up = sub.add_parser("update", help="install the newest decomp.wtf (the running app restarts into it)")
     up.add_argument("--check", action="store_true", help="only say whether there is one")
     ii = sub.add_parser("install-info", help=argparse.SUPPRESS)  # the installers: where updates come from
-    ii.add_argument("--channel", choices=["release", "branch"], default="release")
+    ii.add_argument("--channel", choices=["release", "branch", "image"], default="release")
     ii.add_argument("--branch", default="")
     ii.add_argument("--commit", default="")
-    ii.add_argument("--repo", default="i12bp8/decomp.wtf")
+    ii.add_argument("--repo", default=os.environ.get("DECOMP_REPO", "bpstuder/decomp.wtf"))
     c = sub.add_parser("connect", help="give your AI agents (Claude Code, Codex, Antigravity CLI, opencode) decomp.wtf's tools")
     c.add_argument("agents", nargs="*", metavar="agent", help="claude, codex, antigravity (agy) or opencode (default: every one installed)")
     c.add_argument("--list", action="store_true", help="only show which are connected")

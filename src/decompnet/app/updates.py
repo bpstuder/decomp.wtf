@@ -5,6 +5,9 @@ Where updates come from depends on how decomp.wtf was installed (install.json, w
 - "release": the version on decomp.wtf (its install.sh says which one), installed from the wheel there
 - "branch":  the newest commit of a branch on GitHub (for testing a branch before it's released), installed from
              GitHub's archive of that commit
+- "image":   a Docker image or a plain folder the code was copied into. There is nothing to update *from*:
+             the image is the artefact, so no update is offered (and the release channel, which would replace
+             this build with upstream's, is never used).
 Installing is `uv tool install --force` of the new version, then its `decomp setup` (new pinned tools), then the
 running app becomes the new version with exec (the process, its console window and its port stay the same).
 """
@@ -41,7 +44,7 @@ def installed() -> dict:
         data = json.loads(info_file().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         data = {}
-    if not isinstance(data, dict) or data.get("channel") not in ("release", "branch"):
+    if not isinstance(data, dict) or data.get("channel") not in ("release", "branch", "image"):
         data = {"channel": "release"}
     data.setdefault("repo", REPO)
     data["version"] = __version__
@@ -49,9 +52,9 @@ def installed() -> dict:
 
 
 def record(channel: str, branch: str = "", commit: str = "", repo: str = REPO) -> dict:
-    data = {"channel": channel if channel in ("release", "branch") else "release", "repo": repo or REPO,
+    data = {"channel": channel if channel in ("release", "branch", "image") else "release", "repo": repo or REPO,
             "branch": branch, "commit": commit, "version": __version__, "t": time.time()}
-    if data["channel"] == "release":
+    if data["channel"] != "branch":
         data.update(branch="", commit="")
     info_file().parent.mkdir(parents=True, exist_ok=True)
     info_file().write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -132,7 +135,13 @@ def check() -> dict:
     out = {"current": cur, "available": False, "latest": None, "notes": [], "link": None, "error": None,
            "checked": time.time(), "can_apply": can_apply()[0], "why_not": can_apply()[1]}
     try:
-        out.update(_check_branch(cur) if cur["channel"] == "branch" else _check_release(cur))
+        if cur["channel"] == "image":
+            # installed from an image (or a folder): there is no newer copy to fetch, and the
+            # upstream release channel would silently replace this code with someone else's.
+            out["note"] = ("this copy of decomp.wtf was installed from an image or a folder, not a release or a "
+                           "GitHub branch: it is updated by rebuilding the image, not by this button")
+        else:
+            out.update(_check_branch(cur) if cur["channel"] == "branch" else _check_release(cur))
     except (OSError, ValueError, KeyError) as e:
         out["error"] = f"couldn't check for updates: {e}"
     return out

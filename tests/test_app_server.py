@@ -50,6 +50,33 @@ def test_gui_needs_the_secret_and_the_right_host(app):
     assert client.post("/api/settings", json={"autopilot": False}, headers={"X-Decomp": "1"}).json()["autopilot"] is False
 
 
+def test_a_front_door_host_can_be_allowed_explicitly(tmp_path):
+    """Tailscale `serve` / a reverse proxy adds its own name to DECOMP_ALLOWED_HOSTS."""
+    saved = os.environ.get("DECOMP_ALLOWED_HOSTS")
+    os.environ["DECOMP_ALLOWED_HOSTS"] = "Decomp.Jaguar-Duck.TS.Net, other.example"
+    try:
+        home = tmp_path / "home"
+        (home / ".decomp").mkdir(parents=True)
+        net = RomNetwork(home / ".decomp" / "decomp.db", home)
+        mcp, _, security = build(net, home / ".decomp", PORT, SECRET)
+        assert "decomp.jaguar-duck.ts.net" in security.allowed_hosts
+        app = mcp.streamable_http_app(transport_security=security, host="127.0.0.1")
+        door = TestClient(app, base_url="http://127.0.0.1:%d" % PORT)
+        assert door.get("/api/state", headers={"Host": "decomp.jaguar-duck.ts.net"}).status_code == 401
+        door.cookies.set("decomp_live", SECRET)
+        # the door's name is accepted, unlike a name nobody listed
+        assert door.get("/api/state", headers={"Host": "decomp.jaguar-duck.ts.net"}).status_code == 200
+        assert door.get("/api/state", headers={"Host": "evil.example"}).status_code == 403
+        # the same set feeds the MCP transport's DNS-rebinding protection (checked on the object:
+        # the raw TestClient here does not run the lifespan the MCP app needs)
+        assert "other.example" in security.allowed_hosts
+    finally:
+        if saved is None:
+            os.environ.pop("DECOMP_ALLOWED_HOSTS", None)
+        else:
+            os.environ["DECOMP_ALLOWED_HOSTS"] = saved
+
+
 @needs_demo
 def test_import_demo_and_follow_it_live(app):
     client, net, _ = app

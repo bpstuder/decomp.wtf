@@ -269,6 +269,11 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         settings.save()
     manager.persist = remember
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    # Behind a front door (Tailscale `serve`, a reverse proxy), the Host header arrives as that
+    # door's name and every request would be refused with 403 "bad host". Declare the extra names
+    # in DECOMP_ALLOWED_HOSTS (comma or space separated, e.g. "decomp.jaguar-duck.ts.net") —
+    # the same set also feeds the MCP transport's DNS-rebinding protection below.
+    allowed_hosts |= {h.lower() for h in os.environ.get("DECOMP_ALLOWED_HOSTS", "").replace(",", " ").split() if h}
 
     def agent_of(ctx: Context):
         headers = ctx.headers or {}
@@ -323,7 +328,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     mcp._lowlevel_server.add_request_handler("tools/list", PaginatedRequestParams, scoped_tools)
 
     def guard(request: Request, write: bool = False) -> Response | None:
-        if request.headers.get("host") not in allowed_hosts:
+        if (request.headers.get("host") or "").lower() not in allowed_hosts:
             return JSONResponse({"error": "bad host"}, status_code=403)
         if not secrets.compare_digest(request.cookies.get(COOKIE, ""), secret):
             return JSONResponse({"error": "open decomp.wtf from the app or the `decomp` command"}, status_code=401)
@@ -348,7 +353,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
     @mcp.custom_route("/", methods=["GET"])
     async def index(request: Request) -> Response:
-        if request.headers.get("host") not in allowed_hosts:
+        if (request.headers.get("host") or "").lower() not in allowed_hosts:
             return JSONResponse({"error": "bad host"}, status_code=403)
         key = request.query_params.get("k")
         if key:
@@ -365,7 +370,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
     @mcp.custom_route("/assets/{name:path}", methods=["GET"])
     async def asset(request: Request) -> Response:
-        if request.headers.get("host") not in allowed_hosts:
+        if (request.headers.get("host") or "").lower() not in allowed_hosts:
             return Response(status_code=403)
         name = request.path_params["name"]
         data = _static(name)
