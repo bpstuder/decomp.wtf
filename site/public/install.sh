@@ -24,7 +24,9 @@
 set -euo pipefail
 
 VERSION="0.10.6"
-REPO="i12bp8/decomp.wtf"
+# Fork: the repository that branch installs and `decomp update` resolve against. Overridable so the
+# Docker image (and any other deployment) can point at a fork without editing this script.
+REPO="${DECOMP_REPO:-bpstuder/decomp.wtf}"
 START=1
 SOURCE="${DECOMP_SOURCE:-}"
 [ -z "$SOURCE" ] && [ -n "${DECOMP_BRANCH:-}" ] && SOURCE="branch:${DECOMP_BRANCH}"
