@@ -121,6 +121,38 @@ def test_luvdis_survives_code_that_pops_more_than_it_pushed(tmp_path):
     assert at in found and "func_start" in asm
 
 
+def test_luvdis_survives_a_partial_bl(tmp_path):
+    """luvdis's exit analysis read a register operand every instruction writing pc has, so a partial `bl`
+    (GBATEK THUMB.19: PC = LR + imm<<1, which luvdis decodes as a Thumb20 with no `rd`) ended Shaman
+    King: Master of Spirits with "AttributeError: 'Thumb20' object has no attribute 'rd'" — 644 functions
+    were already found; the crash came in the second pass, over code nothing calls."""
+    from decompnet.rom import gba
+
+    rom = bytearray(ROM.read_bytes())
+    at = gba.BASE + len(rom)
+    rom += bytes.fromhex("a0f8")  # pbl: PC = LR + imm<<1, decoded as a Thumb20 (no `rd`)
+    (tmp_path / "rom.gba").write_bytes(rom)
+    (tmp_path / "in.cfg").write_text(f"thumb_func 0x{at:X}\n")
+    asm, found = gba._luvdis(tmp_path / "rom.gba", tmp_path, tmp_path / "in.cfg")
+    assert at in found and "func_start" in asm
+
+
+def test_the_luvdis_fixes_still_apply(tmp_path):
+    """luvdis_run.py patches luvdis by replacing exact source. If the pinned luvdis ever moves that code the
+    fix would silently stop being applied while everything kept working, so it has to fail loudly instead —
+    this checks both halves: the real source matches, and a source that doesn't is refused."""
+    from decompnet.rom import luvdis_run
+
+    if toolchains.installed("luvdis") is None:
+        pytest.skip("needs luvdis")
+    python = toolchains.venv_bin(toolchains.require("luvdis") / "venv", "python")
+    where = subprocess.run([str(python), "-c", "import luvdis.analyze as m; print(m.__file__)"],
+                           capture_output=True, text=True, check=True).stdout.strip()
+    luvdis_run.patched(Path(where).read_text(encoding="utf-8"), where)  # must not raise
+    with pytest.raises(SystemExit):
+        luvdis_run.patched("# nothing this file patches\n", "/nonexistent")
+
+
 def test_a_helper_linked_twice_gets_two_names(tmp_path, monkeypatch):
     """Two copies of libgcc's _call_via_r3 (Spyro Orange) broke the import on the functions' unique names."""
     from decompnet.rom import gba

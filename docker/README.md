@@ -11,15 +11,23 @@ docker compose -f <app-dir>/compose.yaml up -d --build
 docker compose -f <app-dir>/compose.yaml exec decomp decomp url    # the signed-in address
 ```
 
-`/home/decomp` is the named volume `decomp-wtf-home` — or
-`<project>_decomp-wtf-home` if you use a different compose project name. It holds the install *and*
-every project, so a rebuild or a `down` loses nothing. Back it up while the app is stopped:
+The app's home is the bind mount `${DECOMP_DATA}` on the host (the deployment uses
+`/opt/selfhosted/data/decomp-wtf`) — not a named volume, so `/home/decomp`'s contents (its install,
+`Decomp/` with the projects, `.decomp/` with the database and the log) are an ordinary directory you
+can read, grep, copy and edit. The install itself lives there too, which is what makes
+`DECOMP_INSTALL_ID` meaningful: the entrypoint only reinstalls the app when that marker changes.
+
+Back it up, with a shell you can read afterwards:
 
 ```bash
 docker compose -f <app-dir>/compose.yaml stop
-docker run --rm -u "$(id -u):$(id -g)" -v decomp-wtf-home:/v:ro -v <backup-dir>:/b:rw alpine \
-  tar -czf "/b/decomp-wtf-$(date -u +%Y%m%dT%H%M%SZ).tar.gz" -C /v .
+tar -czf "/opt/selfhosted/backups/decomp-wtf-$(date -u +%Y%m%dT%H%M%SZ).tar.gz" -C "$DECOMP_DATA" .
+docker compose -f <app-dir>/compose.yaml up -d
 ```
+
+A copy made while the app ran would hold a live SQLite database, hence the `stop` first; the log
+(`Decomp/.decomp/logs/decomp.log`) is the one to read when an import fails, and it is in the same
+directory.
 
 ## What the first start does
 

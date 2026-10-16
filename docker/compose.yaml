@@ -6,10 +6,12 @@
 #     docker compose -f <app-dir>/compose.yaml exec decomp decomp url
 #
 # Differences from the root docker-compose.yml (which is the same app, in its simplest form):
+#   - the app's home is a BIND MOUNT (${DECOMP_DATA}), not a named volume, so the install, the
+#     projects, the database and the logs are a directory you can read, copy and edit;
 #   - the front door's hostname is declared (DECOMP_ALLOWED_HOSTS), because the app refuses any
 #     Host header outside 127.0.0.1/localhost with 403 "bad host";
 #   - the image tag is pinned and the install is identified (DECOMP_INSTALL_ID), so a rebuild
-#     reaches the volume instead of being silently reused;
+#     reaches the data directory instead of being silently reused;
 #   - the network subnet is pinned, which a host running many stacks needs (Docker's default
 #     address pools get exhausted, and a new implicit network then fails to allocate);
 #   - the games directory is mounted read-only at /roms.
@@ -20,7 +22,7 @@ services:
     build:
       context: ${DECOMP_CHECKOUT:-..}        # the checkout the image is built from
       dockerfile: site/public/Dockerfile
-    image: decomp-wtf:0.10.6-fork3           # bump with DECOMP_INSTALL_ID on every rebuild
+    image: decomp-wtf:0.10.6-fork4           # bump with DECOMP_INSTALL_ID on every rebuild
     container_name: decomp-wtf
     restart: unless-stopped
     init: true
@@ -31,12 +33,10 @@ services:
     ports:
       - "127.0.0.1:6464:6464"
     volumes:
-      - decomp-wtf-home:/home/decomp
+      - ${DECOMP_DATA}:/home/decomp
       - ${DECOMP_ROMS}:${DECOMP_ROMS_CONTAINER:-/roms}:ro
 networks:
   default:
     ipam:
       config:
         - subnet: ${DECOMP_SUBNET:-10.79.0.0/24}
-volumes:
-  decomp-wtf-home:
