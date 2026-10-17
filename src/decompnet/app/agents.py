@@ -159,6 +159,35 @@ _NO_CREDIT = re.compile(r"insufficient[ _](?:balance|credits?|funds|quota)|excee
 _THROTTLED = re.compile(r"too many requests|rate[ _-]?limit|concurrency limit|\b429\b|overloaded", re.I)
 
 
+# A model stream can die and leave the CLI waiting for an answer that never comes: the run then sits there looking
+# busy, holding the functions it claimed, until the claim's own time-out (OpenCode Zen's free models answer
+# "stream error: AI_APICallError: Rate limit exceeded" and wait forever after it). Two watches end such a run
+# instead. Both are generous on purpose: a working run says something often, and a run that has already reported a
+# failed stream gets a short grace period to retry before it is written off. Tune with DECOMP_STALL_SECONDS and
+# DECOMP_STREAM_DEAD_SECONDS.
+def _seconds(name: str, default: float) -> float:
+    try:
+        return max(30.0, float(os.environ.get(name) or default))
+    except ValueError:
+        return default
+
+
+STALL_SECONDS = _seconds("DECOMP_STALL_SECONDS", 15 * 60)
+STREAM_DEAD_SECONDS = _seconds("DECOMP_STREAM_DEAD_SECONDS", 2 * 60)
+
+
+def stall_reason(quiet: float, stream_error: str, stall: float, dead: float) -> str:
+    """Why a run should be stopped after saying nothing for `quiet` seconds, or "" while it still deserves the
+    benefit of the doubt. `stream_error` is the last failed stream the CLI reported, if any: after one the answer
+    is not coming, so the grace period is much shorter."""
+    if quiet <= (dead if stream_error else stall):
+        return ""
+    span = f"{int(quiet // 60)} min" if quiet >= 60 else f"{int(quiet)}s"
+    if stream_error:
+        return f"no answer for {span} after the model's stream failed ({stream_error[:160]})"
+    return f"nothing from the agent for {span}"
+
+
 def no_credit(said: str) -> str | None:
     """The helper's error when its model's provider says the account is out of credit, else None."""
     if not (m := _NO_CREDIT.search(said)):
@@ -864,6 +893,12 @@ class Manager:
                                 creationflags=flags, start_new_session=not WIN)
         s.proc = proc
         errors: collections.deque = collections.deque(maxlen=20)
+        activity = {"t": time.monotonic()}  # the last thing the CLI said, on either stream
+        stream_error = {"text": ""}  # it reported a failed stream: an answer may never come
+        stalled = {"why": ""}  # set by the watch below, reported once the process is gone
+
+        def note() -> None:
+            activity["t"] = time.monotonic()
 
         def feed_prompt():
             try:
@@ -874,15 +909,36 @@ class Manager:
 
         def drain_err():
             for line in proc.stderr:
+                note()
                 if (text := clean_stderr(s.kind, line)) and (not errors or errors[-1] != text):
                     errors.append(text)
-        threading.Thread(target=feed_prompt, daemon=True).start()
-        threading.Thread(target=drain_err, daemon=True).start()
+                    if "stream error" in line or _THROTTLED.search(text):
+                        stream_error["text"] = text
+
+        def watch_stall() -> None:
+            """End a run whose model stream died: the CLI waits for an answer that never arrives, and the session
+            would sit there looking busy - holding the functions it claimed - until the claim's own time-out."""
+            while proc.poll() is None and not s.stop.is_set():
+                if (why := stall_reason(time.monotonic() - activity["t"], stream_error["text"],
+                                        STALL_SECONDS, STREAM_DEAD_SECONDS)):
+                    stalled["why"] = why
+                    _terminate(proc)
+                    if proc.wait(20) is None:  # a CLI that ignores SIGTERM still must not hold this session
+                        try:
+                            os.killpg(proc.pid, 9)
+                        except (OSError, ProcessLookupError):
+                            pass
+                    return
+                time.sleep(5)
+
+        for target in (feed_prompt, drain_err, watch_stall):
+            threading.Thread(target=target, daemon=True).start()
         saw_tool = False
         said: collections.deque = collections.deque(maxlen=20)
         state: dict = {}
         last_error = refused = ""
         for line in proc.stdout:
+            note()
             for kind, text in parse_line(s.kind, line, state):
                 if kind == "usage":
                     self._account(s, json.loads(text))
@@ -908,6 +964,11 @@ class Manager:
             s.signed_out = True
             s.error = f"{KINDS[s.kind].name} isn't signed in on this computer. {signin(KINDS[s.kind])}"
             s.push("error", s.error)
+            return False
+        if stalled["why"] and not s.stop.is_set():
+            s.push("error", f"stopping this run: {stalled['why']}")
+            if not s.throttled:  # a provider limit isn't this run's failure: _run waits it out and says so
+                s.error = f"the run stalled: {stalled['why']}"
             return False
         if code != 0 and not s.stop.is_set():
             tail = " · ".join(list(errors)[-3:]) or last_error or f"exited with code {code}"

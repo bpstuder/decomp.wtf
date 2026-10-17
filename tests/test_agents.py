@@ -2,6 +2,7 @@
 stdin, `decomp connect`, and the compact context agents get (assembly, diffs)."""
 
 import json
+import time
 
 import pytest
 
@@ -164,3 +165,51 @@ def test_antigravity_helpers_say_when_it_isnt_connected(tmp_path, monkeypatch):
     s.runs = 1
     with pytest.raises(agents.Fatal, match="decomp connect antigravity"):
         m._run_cli(s, "tok", tmp_path)
+
+
+def test_a_dead_model_stream_ends_the_run_instead_of_hanging(tmp_path, monkeypatch):
+    """OpenCode Zen's free models answer "stream error: AI_APICallError: Rate limit exceeded" and then wait for an
+    answer that never comes: the session sat there looking busy - holding the functions it had claimed - for as long
+    as it was left alone. The run is stopped and reported, and marked throttled so `_run` waits the limit out."""
+    monkeypatch.setattr(agents, "STREAM_DEAD_SECONDS", 1.0)
+    monkeypatch.setattr(agents, "STALL_SECONDS", 3600.0)  # only the failed-stream watch may fire here
+    m = _manager(tmp_path, monkeypatch, "opencode")
+    exe = tmp_path / "bin" / "opencode"
+    exe.write_text("#!/bin/sh\n"
+                   "echo 'timestamp=2026-10-17T08:20:27.105Z level=ERROR run=1 message=\"stream error\" "
+                   "providerID=opencode modelID=beam-free error=\"AI_APICallError: Rate limit exceeded. "
+                   "Please try again later.\"' >&2\n"
+                   "exec sleep 600\n")
+    exe.chmod(0o755)
+    s = agents.Session("opencode-1", "opencode", "o", "demo", "opencode-1", {"model": "opencode/beam-free"})
+    work = tmp_path / "w"
+    work.mkdir()
+    t0 = time.monotonic()
+    assert m._run_cli(s, "tok", work) is False
+    assert time.monotonic() - t0 < 30  # stopped by the watch, not by the CLI's own 600s sleep
+    assert s.proc is None and s.throttled is True
+    assert any("no answer for" in f["text"] and "Rate limit exceeded" in f["text"] for f in s.feed)
+
+
+def test_a_run_that_says_nothing_at_all_is_stopped_too(tmp_path, monkeypatch):
+    """A CLI that hangs without reporting anything is the same problem: it is not left holding claims either."""
+    monkeypatch.setattr(agents, "STALL_SECONDS", 1.0)
+    m = _manager(tmp_path, monkeypatch, "opencode")
+    exe = tmp_path / "bin" / "opencode"
+    exe.write_text("#!/bin/sh\nexec sleep 600\n")
+    exe.chmod(0o755)
+    s = agents.Session("opencode-1", "opencode", "o", "demo", "opencode-1", {})
+    work = tmp_path / "w2"
+    work.mkdir()
+    assert m._run_cli(s, "tok", work) is False
+    assert s.throttled is False and s.error.startswith("the run stalled: nothing from the agent for")
+
+
+def test_the_stall_watches_are_thresholds_not_a_short_fuse():
+    """A long generation or a slow compile must survive them: the grace periods are minutes, not seconds."""
+    assert agents.STALL_SECONDS >= 600 and agents.STREAM_DEAD_SECONDS >= 60
+    assert agents.stall_reason(60, "", agents.STALL_SECONDS, agents.STREAM_DEAD_SECONDS) == ""
+    assert agents.stall_reason(120, "AI_APICallError: Rate limit exceeded.", 900.0, 120.0) == ""
+    assert agents.stall_reason(1800, "", 900.0, 120.0) == "nothing from the agent for 30 min"
+    assert agents.stall_reason(1800, "AI_APICallError: Rate limit exceeded.", 900.0, 120.0) == (
+        "no answer for 30 min after the model's stream failed (AI_APICallError: Rate limit exceeded.)")
