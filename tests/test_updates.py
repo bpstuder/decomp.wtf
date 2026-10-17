@@ -165,3 +165,34 @@ def test_update_api(tmp_path, monkeypatch):
     assert client.post("/api/settings", json={"check_updates": False}, headers={"X-Decomp": "1"}).json()["check_updates"] is False
     assert client.get("/api/update").json()["disabled"] is True
     assert "build" in client.get("/health").json()
+
+
+def test_an_image_install_answers_status():
+    """A Docker install records channel "image", and check() offers nothing for it. status() must still answer:
+    its recheck lookup had no entry for that channel, so every watcher tick and every /api/update call raised
+    KeyError — which killed the background thread and answered 500 on the route."""
+    updates.record("image")
+    found = updates.check()
+    assert found["available"] is False and "image" in found["note"] and found["error"] is None
+    up = updates.Updater(before_restart=lambda: None, port=6500, secret="sec")
+    for refresh in (True, False, False):  # the UI's "check now", then the watcher's tick against a warm cache
+        st = up.status(refresh)
+        assert st["available"] is False and st["job"]["state"] == "idle" and "runtime" in st
+
+
+def test_the_key_survives_a_restart(tmp_path, monkeypatch):
+    """The key that opens the app lives in the app's home, so a restart hands back the same address: a fresh
+    random key each start killed every open tab, every bookmarked address and the browser's 30-day cookie."""
+    from decompnet.app import cli
+
+    internal = tmp_path / "home" / ".decomp"
+    internal.mkdir(parents=True)
+    monkeypatch.delenv("DECOMP_SECRET", raising=False)
+    first = cli._secret(internal)
+    assert first == cli._secret(internal)  # the next start reads the same key back
+    assert (internal / "secret").read_text() == first
+    assert stat.S_IMODE((internal / "secret").stat().st_mode) == 0o600
+
+    monkeypatch.setenv("DECOMP_SECRET", "set-by-hand")
+    assert cli._secret(internal) == "set-by-hand"
+    assert (internal / "secret").read_text() == first  # the override doesn't rewrite the stored key

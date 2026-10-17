@@ -117,6 +117,28 @@ def _restart_state() -> dict | None:
         return None
 
 
+def _secret(internal: Path) -> str:
+    """The key that opens the app: the `?k=` link and the decomp_live cookie. Kept in the app's home, so a
+    restart hands back the same address (a fresh random key each start silently killed every open tab, every
+    bookmarked address and the browser's 30-day cookie). DECOMP_SECRET overrides it; delete the file to rotate."""
+    if env := os.environ.get("DECOMP_SECRET"):
+        return env
+    path = internal / "secret"
+    try:
+        found = path.read_text(encoding="utf-8").strip()
+        if found:
+            return found
+    except OSError:
+        pass
+    secret = secrets.token_urlsafe(24)
+    try:
+        path.write_text(secret, encoding="utf-8")
+        os.chmod(path, 0o600)
+    except OSError:  # a home that can't be written to: this run gets a key that doesn't outlive it
+        pass
+    return secret
+
+
 def run(args) -> int:
     import uvicorn
 
@@ -140,7 +162,7 @@ def run(args) -> int:
 
     sock = _listen(restarted["port"] if restarted else args.port, exact=bool(restarted) or _fixed_port())
     port = sock.getsockname()[1]
-    secret = restarted["secret"] if restarted else secrets.token_urlsafe(24)
+    secret = restarted["secret"] if restarted else _secret(internal)
     state_file.write_text(json.dumps({"port": port, "secret": secret, "pid": os.getpid()}), encoding="utf-8")
     try:
         os.chmod(state_file, 0o600)

@@ -31,7 +31,10 @@ from .. import __version__, hostenv, toolchains
 
 REPO = "i12bp8/decomp.wtf"
 SITE = "https://decomp.wtf"
-RECHECK = {"release": 3 * 3600, "branch": 15 * 60}  # GitHub allows 60 unauthenticated API calls an hour
+# Every channel installed() can report needs an entry here: a missing one raises KeyError straight out of
+# status(), which kills the thread that watches for updates and makes /api/update answer 500 on every call.
+# "image" (the Docker install) checks nothing locally, so its interval only paces the cached state the UI reads.
+RECHECK = {"release": 3 * 3600, "branch": 15 * 60, "image": 24 * 3600}  # GitHub allows 60 unauthenticated API calls an hour
 
 
 def info_file() -> Path:
@@ -230,7 +233,7 @@ class Updater:
     def status(self, refresh: bool = False) -> dict:
         cur = self.last
         channel = installed()["channel"]
-        if refresh or cur is None or time.time() - cur.get("checked", 0) > RECHECK[channel]:
+        if refresh or cur is None or time.time() - cur.get("checked", 0) > RECHECK.get(channel, RECHECK["release"]):
             self.last = cur = check()
         return {**cur, "job": {k: (v[-200:] if k == "log" else v) for k, v in self.job.items()},
                 "runtime": hostenv.runtime()}
