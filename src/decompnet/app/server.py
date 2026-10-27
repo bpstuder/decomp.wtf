@@ -153,13 +153,17 @@ class Settings:
         """Add an endpoint (no id) or change one. A key is only replaced by a new one typed in (the masked one the
         GUI shows comes back unchanged)."""
         numbers = {}
-        for k in ("context_tokens", "max_sessions"):  # the model's context in tokens (empty = find out); a box's limit
+        # the model's context in tokens (empty = find out); a box's limit of sessions at once; the provider's limit
+        # of tokens an hour for this key (empty = none), which the built-in agent waits out instead of hitting
+        for k in ("context_tokens", "max_sessions", "tokens_per_hour"):
             if k in data:
                 try:
                     numbers[k] = int(str(data[k] or "").strip() or 0)
                 except ValueError:
-                    raise ValueError("the context size is a number of tokens, like 16384" if k == "context_tokens"
-                                     else "the session limit is a number, like 1") from None
+                    raise ValueError({"context_tokens": "the context size is a number of tokens, like 16384",
+                                      "max_sessions": "the session limit is a number, like 1",
+                                      "tokens_per_hour": "the hourly limit is a number of tokens, like 6000000",
+                                      }[k]) from None
         current = self.endpoint(str(data.get("id") or ""))
         if current is None:  # ids are never reused: a session resumed later can't end up on another machine
             ids = {e["id"] for e in self.endpoints()}
@@ -173,10 +177,14 @@ class Settings:
             if k in data:
                 current[k] = str(data[k] or "").strip()
         for k, n in numbers.items():
-            if n:
-                current[k] = max(2048, n) if k == "context_tokens" else max(1, min(n, 32))
-            else:
+            if not n:
                 current.pop(k, None)
+            elif k == "context_tokens":
+                current[k] = max(2048, n)
+            elif k == "max_sessions":
+                current[k] = max(1, min(n, 32))
+            else:  # tokens_per_hour
+                current[k] = max(1, n)
         if data.get("api_key") and "•" not in str(data["api_key"]):
             current["api_key"] = str(data["api_key"]).strip()
         if data.get("clear_key"):
@@ -206,7 +214,7 @@ def _session_options(entry: dict) -> dict:
     """What a built-in agent session needs from its endpoint."""
     out = {"endpoint": entry.get("id") or "", "provider": entry["provider"], "base_url": entry["base_url"],
            "model": entry["model"], "provider_name": entry["name"]}
-    return out | {k: entry[k] for k in ("api_key", "context_tokens") if entry.get(k)}
+    return out | {k: entry[k] for k in ("api_key", "context_tokens", "tokens_per_hour") if entry.get(k)}
 
 
 def _spread(settings: Settings, manager, picked: list[str], count: int, given: dict) -> list[tuple[dict, int]]:

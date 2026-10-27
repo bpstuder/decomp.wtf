@@ -4,6 +4,7 @@ stdin, `decomp connect`, and the compact context agents get (assembly, diffs).""
 import json
 import time
 
+import httpx
 import pytest
 
 from decompnet import scoring
@@ -213,3 +214,47 @@ def test_the_stall_watches_are_thresholds_not_a_short_fuse():
     assert agents.stall_reason(1800, "", 900.0, 120.0) == "nothing from the agent for 30 min"
     assert agents.stall_reason(1800, "AI_APICallError: Rate limit exceeded.", 900.0, 120.0) == (
         "no answer for 30 min after the model's stream failed (AI_APICallError: Rate limit exceeded.)")
+
+
+def test_the_hourly_token_bucket_is_counted_per_key_and_ages_out():
+    """A provider caps tokens an hour per key and counts every model on it into the same bucket (Nous' free tier:
+    6M an hour), so the count is per endpoint, not per session, and a full hour means waiting - not a 429."""
+    tokens = agents.HourlyTokens()
+    tokens.spend("e1", 800, now=0)
+    assert tokens.wait_seconds("e1", 1000, 100, now=10) == 0  # 800 + 100 still fits
+    assert tokens.wait_seconds("e1", 1000, 300, now=10) == 3590  # the 800 has to age out first
+    assert tokens.wait_seconds("e2", 1000, 300, now=10) == 0  # another endpoint: another key, another bucket
+    tokens.spend("e1", 900, now=3601)  # an hour later the first spend has left the window
+    assert tokens.used("e1", now=3602) == 900
+    assert tokens.wait_seconds("e1", 1000, 300, now=3602) == 3599
+    assert tokens.wait_seconds("e1", 500, 900, now=3602) == 3599  # a request over the whole limit waits for empty
+    assert tokens.wait_seconds("e2", 0, 1, now=3602) == 0  # no limit: never wait
+
+
+def test_a_spent_hour_pauses_the_builtin_agent_instead_of_hitting_the_provider(tmp_path, monkeypatch):
+    """With a tokens-an-hour limit on the endpoint, the loop waits for room instead of sending the request that would
+    earn a 429, and says why in the feed."""
+    m = agents.Manager(None, tmp_path, "http://127.0.0.1:9/mcp")
+    m.net = type("Net", (), {"fork_slug": lambda self, slug: None, "add_spend": lambda self, *a: None})()
+    m.prompt = lambda s: "go"
+    sent = []
+
+    def handler(request):
+        sent.append(json.loads(request.content))
+        msg = {"role": "assistant", "content": "looking", "tool_calls": [
+            {"id": str(len(sent)), "type": "function", "function": {"name": "list_functions", "arguments": "{}"}}]}
+        return httpx.Response(200, json={"choices": [{"message": msg}], "usage": {"total_tokens": 900}})
+
+    real = httpx.Client
+    monkeypatch.setattr(agents.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(agents, "api_tool_schemas", lambda fork=False: [])
+    monkeypatch.setattr(agents.tools, "call", lambda *a: "no functions yet")
+    s = agents.Session("api-h", "api", "Test", "demo", "api-hourly",
+                       {"endpoint": "e-hourly", "base_url": "http://mock/v1", "model": "m",
+                        "context_tokens": 32768, "tokens_per_hour": 1000})
+    waits = []
+    monkeypatch.setattr(s.stop, "wait", lambda secs=None: (waits.append(secs), s.stop.set())[1])
+    assert m._run_api(s, None) is True  # stopped by the wait, not by an error
+    assert len(sent) == 1 and m.hourly.used("e-hourly") == 900
+    assert waits and waits[0] > 3000  # the bucket is spent: the next request waits for it to age out
+    assert any("tokens an hour" in f["text"] for f in s.feed)

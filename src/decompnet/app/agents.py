@@ -108,7 +108,7 @@ def endpoint_entry(e: dict) -> dict:
     out = {"id": str(e.get("id") or ""), "provider": provider, "base_url": base,
            "model": (e.get("model") or preset["model"]).strip(),
            "name": (e.get("name") or "").strip() or (host if moved and host else preset["name"]) or "API"}
-    for k in ("api_key", "context_tokens", "max_sessions"):
+    for k in ("api_key", "context_tokens", "max_sessions", "tokens_per_hour"):
         if e.get(k):
             out[k] = e[k]
     return out
@@ -194,6 +194,56 @@ def no_credit(said: str) -> str | None:
         return None
     return (f"the model's provider says the account is out of credit (\u201c{m.group(0)}\u201d): top it up, then "
             "start the agents again")
+
+
+class HourlyTokens:
+    """Tokens one API key may spend in any rolling hour, counted across every session that uses it.
+
+    Providers cap tokens an hour per key, not per session, and count all of that key's models into one bucket
+    (Nous' free tier: 6M across every model on the key), so the 429 a full bucket earns says nothing about when
+    there will be room again. Counting here lets a session wait the window out instead of spending the hour
+    firing requests at it.
+
+    shortcut: kept in memory, so restarting the app forgets what the hour had already spent.
+    """
+
+    HOUR = 3600.0
+
+    def __init__(self) -> None:
+        self._spent: dict[str, collections.deque] = {}
+        self._lock = threading.Lock()
+
+    def _window(self, key: str, now: float) -> collections.deque:
+        q = self._spent.setdefault(key, collections.deque())
+        while q and now - q[0][0] >= self.HOUR:
+            q.popleft()
+        return q
+
+    def spend(self, key: str, tokens: int, now: float | None = None) -> None:
+        if tokens > 0:
+            now = time.time() if now is None else now
+            with self._lock:
+                self._window(key, now).append((now, int(tokens)))
+
+    def used(self, key: str, now: float | None = None) -> int:
+        now = time.time() if now is None else now
+        with self._lock:
+            return sum(n for _, n in self._window(key, now))
+
+    def wait_seconds(self, key: str, limit: int, need: int, now: float | None = None) -> float:
+        """Seconds until `need` more tokens fit under `limit` in the rolling hour (0: they fit now). A single
+        request bigger than the whole limit waits only until the hour is empty, never longer."""
+        now = time.time() if now is None else now
+        with self._lock:
+            q = self._window(key, now)
+            excess = sum(n for _, n in q) + min(need, limit) - limit
+            if excess <= 0:
+                return 0.0
+            for t, n in q:  # tokens age out oldest first
+                excess -= n
+                if excess <= 0:
+                    return t + self.HOUR - now
+            return self.HOUR
 
 
 _versions: dict[str, tuple[float, str | None]] = {}
@@ -563,6 +613,7 @@ class Manager:
         self.net, self.home, self.mcp_url = net, home, mcp_url
         self.sessions: dict[str, Session] = {}
         self.assignments: dict[int, str] = {}  # agent id -> project slug
+        self.hourly = HourlyTokens()  # tokens each API endpoint's key has spent this hour, across its sessions
         self._lock = threading.Lock()
         self._prep: dict[str, threading.Event] = {}  # slug -> giving its code source files before agents claim
         self.on_stop = lambda: None  # set by the server: close tunnels when the app quits
@@ -995,6 +1046,12 @@ class Manager:
         headers = {"Content-Type": "application/json"}
         if s.options.get("api_key"):
             headers["Authorization"] = f"Bearer {s.options['api_key']}"
+        # The provider limits tokens an hour per key, and the key's models share one bucket: count them together
+        try:
+            limit = max(0, int(s.options.get("tokens_per_hour") or 0))
+        except (TypeError, ValueError):
+            limit = 0
+        key = s.options.get("endpoint") or base
         schema = api_tool_schemas(fork=bool(self.net.fork_slug(s.slug)))
         messages = [{"role": "system", "content": tools.INSTRUCTIONS},
                     {"role": "user", "content": self.prompt(s)}]
@@ -1006,6 +1063,16 @@ class Manager:
             for _step in range(int(s.options.get("max_steps", 120))):
                 if s.stop.is_set():
                     return True
+                if limit:
+                    pause = self.hourly.wait_seconds(key, limit, _tokens(messages) + _tokens(schema))
+                    if pause > 0:  # the hour's tokens are spent: wait for room rather than earn a 429
+                        s.state = "waiting"
+                        s.push("info", f"waiting {max(1, int(pause // 60))} min: this API key allows {limit:,} "
+                                       "tokens an hour and the agents on it have spent them")
+                        s.stop.wait(pause)
+                        if s.stop.is_set():
+                            return True
+                        s.state = "working"
                 for _attempt in range(4):
                     fit(messages, budget)
                     r = client.post(f"{base}/chat/completions", headers=headers,
@@ -1029,6 +1096,8 @@ class Manager:
                 usage = reply.get("usage") if isinstance(reply.get("usage"), dict) else {}
                 if usage.get("total_tokens"):
                     self._account(s, {"tokens": usage["total_tokens"]})
+                    if limit:
+                        self.hourly.spend(key, usage["total_tokens"])
                 if msg.get("reasoning_content"):
                     s.push("think", msg["reasoning_content"][:2000])
                 if msg.get("content"):

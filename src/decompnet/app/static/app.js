@@ -1638,7 +1638,8 @@ function endpointFields(e, compact = false) {
     <label class="field wide"><span>API key (stored only on this computer, sent only to this address)</span><input data-f="key" type="password" placeholder="${e.has_key ? esc(e.api_key) : "paste your key (none for local models)"}" autocomplete="off"></label>
     ${compact ? "" : `<label class="field"><span>Name</span><input data-f="name" value="${esc(e.id ? e.name : "")}" placeholder="${esc(e.id ? e.name : "e.g. gpu-box")}"></label>
     <label class="field"><span>Context size (tokens)</span><input data-f="ctx" class="mono" inputmode="numeric" placeholder="automatic" value="${esc(String(e.context_tokens || ""))}"></label>
-    <label class="field"><span>Sessions at once</span><input data-f="max" class="mono" inputmode="numeric" placeholder="no limit" value="${esc(String(e.max_sessions || ""))}"></label>`}`;
+    <label class="field"><span>Sessions at once</span><input data-f="max" class="mono" inputmode="numeric" placeholder="no limit" value="${esc(String(e.max_sessions || ""))}"></label>
+    <label class="field"><span>Tokens an hour</span><input data-f="hour" class="mono" inputmode="numeric" placeholder="the provider's limit, if any" value="${esc(String(e.tokens_per_hour || ""))}"></label>`}`;
 }
 function wireEndpointFields(box) {
   box.querySelectorAll('[data-f="prov"]').forEach((sel) => {
@@ -1653,7 +1654,8 @@ function endpointData(scope, id = "") {
   const f = (k) => scope.querySelector(`[data-f="${k}"]`);
   const out = { provider: f("prov").value, base_url: f("base").value, model: f("model").value, api_key: f("key").value };
   if (id) out.id = id;
-  if (f("name")) Object.assign(out, { name: f("name").value, context_tokens: f("ctx").value, max_sessions: f("max").value });
+  if (f("name")) Object.assign(out, { name: f("name").value, context_tokens: f("ctx").value, max_sessions: f("max").value,
+    tokens_per_hour: f("hour").value });
   return out;
 }
 

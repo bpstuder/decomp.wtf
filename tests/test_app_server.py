@@ -13,7 +13,7 @@ from starlette.testclient import TestClient
 from decompnet import toolchains
 from decompnet.app import agents
 from decompnet.app.engine import RomNetwork
-from decompnet.app.server import build
+from decompnet.app.server import Settings, _session_options, build
 
 # the tests that import the demo ROM (the rest, such as the GUI's security, run anywhere)
 needs_demo = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None or not shutil.which("ld.lld"),
@@ -107,6 +107,19 @@ def test_settings_never_echo_the_api_key(app):
                       headers={"X-Decomp": "1"}).json()
     assert "sk-abcdef" not in json.dumps(out) and out["api"]["has_key"]
     assert "sk-abcdef" not in json.dumps(client.get("/api/state").json())
+
+
+def test_an_endpoints_hourly_token_limit_is_saved_and_given_to_its_sessions(tmp_path):
+    """A provider's tokens-an-hour limit belongs to the API key, so it is saved on the endpoint (empty = no limit)
+    and every session started on that endpoint gets it."""
+    s = Settings(tmp_path / "settings.json")
+    entry = s.save_endpoint({"provider": "custom", "base_url": "http://127.0.0.1:14400/v1", "model": "free-nous",
+                             "tokens_per_hour": "6000000"})
+    assert entry["tokens_per_hour"] == 6000000
+    assert _session_options(entry)["tokens_per_hour"] == 6000000
+    assert s.save_endpoint({"id": entry["id"], "tokens_per_hour": ""}).get("tokens_per_hour") is None
+    with pytest.raises(ValueError, match="hourly limit"):
+        s.save_endpoint({"id": entry["id"], "tokens_per_hour": "lots"})
 
 
 def test_parse_agent_output():
