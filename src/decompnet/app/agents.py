@@ -1044,8 +1044,11 @@ class Manager:
         if not base or not model:
             raise RuntimeError("set the API address and model first")
         headers = {"Content-Type": "application/json"}
-        if s.options.get("api_key"):
-            headers["Authorization"] = f"Bearer {s.options['api_key']}"
+        key = str(s.options.get("api_key") or "")
+        # `env:NAME` keeps the key in the deployment's environment (.env), not in the saved settings
+        key = os.environ.get(key[4:], "") if key.startswith("env:") else key
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
         # The provider limits tokens an hour per key, and the key's models share one bucket: count them together
         try:
             limit = max(0, int(s.options.get("tokens_per_hour") or 0))

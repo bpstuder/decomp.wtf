@@ -258,3 +258,27 @@ def test_a_spent_hour_pauses_the_builtin_agent_instead_of_hitting_the_provider(t
     assert len(sent) == 1 and m.hourly.used("e-hourly") == 900
     assert waits and waits[0] > 3000  # the bucket is spent: the next request waits for it to age out
     assert any("tokens an hour" in f["text"] for f in s.feed)
+
+
+def test_an_endpoints_key_can_come_from_the_environment(tmp_path, monkeypatch):
+    """`api_key: env:NAME` sends the variable's value, so a deployment keeps its virtual key in .env rather than in
+    the settings file; an unset variable sends no Authorization header at all."""
+    m = agents.Manager(None, tmp_path, "http://127.0.0.1:9/mcp")
+    m.net = type("Net", (), {"fork_slug": lambda self, slug: None, "add_spend": lambda self, *a: None})()
+    m.prompt = lambda s: "go"
+    sent = []
+
+    def handler(request):
+        sent.append(request.headers.get("authorization"))
+        return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "done"}}]})
+
+    real = httpx.Client
+    monkeypatch.setattr(agents.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(agents, "api_tool_schemas", lambda fork=False: [])
+    options = {"endpoint": "e-env", "base_url": "http://mock/v1", "model": "m", "context_tokens": 32768,
+               "api_key": "env:LITELLM_API_KEY"}
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-virtual-123")
+    assert m._run_api(agents.Session("api-h", "api", "Test", "demo", "api-env-key", options), None) is False
+    monkeypatch.delenv("LITELLM_API_KEY")
+    assert m._run_api(agents.Session("api-h", "api", "Test", "demo", "api-env-unset", options), None) is False
+    assert sent == ["Bearer sk-virtual-123", None]

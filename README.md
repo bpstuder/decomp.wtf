@@ -300,6 +300,10 @@ its preset under **Agents & models → API key**, and set the context size there
 itself). The agent trims older tool output to stay within it. Small models do the small functions; the big ones
 need a strong model.
 
+An endpoint's **API key** may be `env:NAME` instead of the key itself: the app then sends whatever variable `NAME`
+holds when it calls that endpoint, so a Docker deployment can keep the secret in its `.env` (or any other
+environment source) instead of the saved settings.
+
 ## Decompile together
 
 A whole team, any size, each on their own computer with their own copy of the game and their own agents, working on
