@@ -25,7 +25,7 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from .. import similarity, toolchains
-from ..forks import catalog, csource, datadiff, drafts, dtksplits, ghidra, scratch_dsd, scratch_dtk
+from ..forks import catalog, csource, datadiff, drafts, dtksplits, ghidra, rules, scratch_dsd, scratch_dtk
 from ..forks.objdiff import ObjdiffError
 from ..forks.project import EDITABLE, STATE, ForkError, ForkProject
 from ..network import Agent, Network, NetworkError
@@ -1922,6 +1922,12 @@ class ForkEngine:
             if matched:
                 self._commit(proj, fp, unit.source, f"Match {meta.get('demangled') or symbol}\n\n"
                                                     f"Decompiled by {agent.name} with decomp.wtf.")
+                # 100% is the byte judge's verdict and stays it; a source that trips a [match] rule is banked
+                # (committed, score 0) but not called matched.
+                if pending := rules.verdict(True, code):
+                    return {"text": f"{pending}\n(the bytes are banked: score 0, committed to git. The source still "
+                                    f"needs the real structure.){_renamed_note(d)}", "score": 0, "matched": True,
+                            "match_pending": True}
                 return {"text": f"✅ MATCH! {fn['name']} is 100% identical to the original. Committed to git in the "
                                 f"project. Call claim_function for the next one.{_renamed_note(d)}"
                                 f"{self._file_done(slug, proj, fp, unit, d.unit_scores, agent)}", "score": 0,
