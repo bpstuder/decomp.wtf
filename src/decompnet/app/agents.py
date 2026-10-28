@@ -1073,6 +1073,9 @@ def api_tool_schemas(fork: bool = False) -> list[dict]:
         "find_similar": ("Functions that look like this one, matched ones first, with the best one's source.",
                          s(function=st("function", True), limit=it("how many"))),
         "guide": ("Decompilation know-how; no topic lists topics.", s(topic=st("topic"))),
+        "rule_check": ("The [match] rules (R4 offset casts, R13 vtables, R17 fake code, R18 asm) on a function's "
+                       "source: a byte-exact match built with a trick is MATCH-PENDING, not matched.",
+                       s(function=st("function", True))),
         "read_file": ("Read a project file with line numbers.", s(path=st("path from the project root", True),
                                                                  start=it("first line"), count=it("lines"))),
         "search_code": ("Regex search over the project's C/C++ sources and headers.",

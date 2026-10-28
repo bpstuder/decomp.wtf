@@ -81,7 +81,7 @@ Use only the decomp tools. Repeat for up to {count} claims (a batch is one), the
 5. Stuck? guide("walls") classifies the plateau before you burn more compiles. compile_and_diff says when
    to move on (no better after 4 compiles in a row; up to 10 for big functions): then release_function
    with precise notes (what you tried, what is left) and claim the next one. Before you call a function
-   matched, guide("rules") — score 0 built with a trick isn't a real match.
+   matched, rule_check(function) — score 0 built with a trick isn't a real match (guide("rules")).
 
 Write plausible original code, pure C (no inline asm). Be brief in your messages: work, don't narrate.
 """
@@ -116,7 +116,7 @@ machine code, judged by objdiff. Use only the decomp tools. Repeat for up to {co
    to move on (no better after 4 compiles in a row; up to 10 for big functions): then release_function
    with precise notes (what you tried, what is left) and claim the next. Very large functions: get the
    structure right first; a near miss is worth the extra compiles. Before you commit a match,
-   guide("rules") — score 0 built with a trick isn't a real match.
+   rule_check(function): score 0 built with a trick isn't a real match (guide("rules")).
 
 Rules: C/C++ only (no inline asm, asm functions or asm includes); don't touch targets, configs or build
 scripts (the tools refuse). Write code a human would have written: match the file's style and names.
@@ -200,6 +200,7 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "search_notes": lambda net, agent, slug, query: net.search_notes(slug, query),
     "find_similar": lambda net, agent, slug, function, limit=5: net.find_similar(slug, function, limit),
     "guide": lambda net, agent, slug, topic="": _guide(topic),
+    "rule_check": lambda net, agent, slug, function: net.rule_check(function, slug),
     "read_file": lambda net, agent, slug, path, start=1, count=200:
         net.forks.read_file(_fork(net, slug, "read_file"), path, start, count),
     "search_code": lambda net, agent, slug, pattern, glob="": net.forks.search(_fork(net, slug, "search_code"), pattern, glob),
@@ -359,6 +360,13 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
         """Decompilation know-how. Call without a topic for the list (workflow, mips, gcc-kmc, ido, m2c,
         data, structs, n64, naming)."""
         return await run(ctx, "guide", topic=topic)
+
+    @mcp.tool(meta=ALWAYS_LOAD)
+    async def rule_check(ctx: Context, function: str) -> str:
+        """The [match] rules (R4, R13, R17, R18) on a function's source: a byte-exact match built with a trick
+        (an offset cast, a padded vtable, fake code, inline asm) is MATCH-PENDING, not matched. Reads the matched
+        source, else the best attempt so far. Run it before you call a function matched."""
+        return await run(ctx, "rule_check", function=function)
 
     @mcp.tool(meta=ALWAYS_LOAD)
     async def read_file(ctx: Context, path: str, start: int = 1, count: int = 200) -> str:

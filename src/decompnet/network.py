@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import policy, scoring
+from .forks import rules
 from .compiler import compile_source
 from .elfobj import FunctionObj, Reloc, extract_function
 from .project import compiler_config
@@ -365,6 +366,19 @@ class Network:
     def compile_and_diff(self, agent: Agent, function: str, source: str, project: str | None = None) -> str:
         return self.attempt(agent, function, source, project)["text"]
 
+    def rule_check(self, function: str, project: str | None = None) -> str:
+        """The [match] rules (R4, R13, R17, R18) on a function's source: what a byte-exact one is judged on before
+        it counts as matched. Reads the matched source, else the best attempt."""
+        fn = self._function(function, project)
+        source = fn["matched_source"] or fn["best_source"]
+        if not source:
+            raise NetworkError(f"{fn['name']} has no source yet: compile_and_diff something first")
+        findings = rules.check(source)
+        if not findings:
+            return (f"✅ {fn['name']} passes the [match] rules (R4 no offset casts, R13 real vtables, R17 no fake "
+                    f"code, R18 no asm).")
+        return f"⚖️ {fn['name']} trips the [match] rules (so its bytes alone are not a match):\n{rules.describe(findings)}"
+
     def attempt(self, agent: Agent, function: str, source: str, project: str | None = None) -> dict:
         """Compile, score and record one attempt. Returns {"text", "score", "matched"} (score None: didn't compile)."""
         self._require_budget(agent)
@@ -419,6 +433,10 @@ class Network:
         if scratch:
             head = f"(scratch — {fn['name']} was already matched) score {d.score}"
         elif d.bytes_match:
+            # The bytes are the judge's and don't change here; only the label on them does. A byte-exact source
+            # that trips a [match] rule is banked (score 0, status matched) but not called matched.
+            if pending := rules.verdict(True, source):
+                return {"text": pending, "score": 0, "matched": True, "match_pending": True}
             return {"text": f"✅ MATCH! {fn['name']} is byte-identical to the target ({fn['n_insns']} instructions). "
                             f"Credited to {agent.name}; your claim is released. Call claim_function for the next one.",
                     "score": 0, "matched": True}
