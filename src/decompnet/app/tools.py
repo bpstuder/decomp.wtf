@@ -37,6 +37,10 @@ GUIDES = {
     "x86": "x86 and MSVC (PC, Xbox): calling conventions, SEH, matching MSVC output",
     "aarch64": "AArch64 and Clang (Switch): registers, matching Clang output",
     "similarity": "finding similar functions and reusing matched code",
+    "matcher": "reconstruct a hard function well: evidence pass, recover lifetimes before blaming registers, finish the source",
+    "walls": "classify a plateau (call set, control flow, register/schedule, referent) and route to the right fix; never permute a referent wall",
+    "helpers": "restore inlined helpers and accessors hidden inside a function, and apply them at every call site",
+    "rules": "what counts as a real match: the reader test, the fakematch table, names vs placeholders",
 }
 
 # Guides worth reading first on each platform.
@@ -74,8 +78,10 @@ Use only the decomp tools. Repeat for up to {count} claims (a batch is one), the
 4. Score 0 = matched and saved. Before moving on, share what you learned: edit_context for prototypes and
    structs you worked out, rename_symbol for functions/data whose purpose is now clear, and add_note (no
    function) for a compiler quirk or convention every agent here should know: the next sessions start with it.
-5. compile_and_diff says when to move on (no better after 4 compiles in a row; up to 10 for big functions):
-   then release_function with precise notes (what you tried, what is left) and claim the next one.
+5. Stuck? guide("walls") classifies the plateau before you burn more compiles. compile_and_diff says when
+   to move on (no better after 4 compiles in a row; up to 10 for big functions): then release_function
+   with precise notes (what you tried, what is left) and claim the next one. Before you call a function
+   matched, guide("rules") — score 0 built with a trick isn't a real match.
 
 Write plausible original code, pure C (no inline asm). Be brief in your messages: work, don't narrate.
 """
@@ -106,9 +112,11 @@ machine code, judged by objdiff. Use only the decomp tools. Repeat for up to {co
 5. The goal is linked files: the game built from the C, byte for byte. When a match finishes a file's
    functions, you're shown its data next to the original's: fix what differs (order, const, statics,
    values) with edit_file until file_status says it matches; decomp.wtf then links the file.
-6. compile_and_diff says when to move on (no better after 4 compiles in a row; up to 10 for big functions):
-   then release_function with precise notes (what you tried, what is left) and claim the next. Very large
-   functions: get the structure right first; a near miss is worth the extra compiles.
+6. Stuck? guide("walls") classifies the plateau before you burn more compiles. compile_and_diff says when
+   to move on (no better after 4 compiles in a row; up to 10 for big functions): then release_function
+   with precise notes (what you tried, what is left) and claim the next. Very large functions: get the
+   structure right first; a near miss is worth the extra compiles. Before you commit a match,
+   guide("rules") — score 0 built with a trick isn't a real match.
 
 Rules: C/C++ only (no inline asm, asm functions or asm includes); don't touch targets, configs or build
 scripts (the tools refuse). Write code a human would have written: match the file's style and names.
