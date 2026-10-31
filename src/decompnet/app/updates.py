@@ -29,7 +29,7 @@ from pathlib import Path
 
 from .. import __version__, hostenv, toolchains
 
-REPO = "i12bp8/decomp.wtf"
+REPO = "bpstuder/decomp.wtf"
 SITE = "https://decomp.wtf"
 # Every channel installed() can report needs an entry here: a missing one raises KeyError straight out of
 # status(), which kills the thread that watches for updates and makes /api/update answer 500 on every call.

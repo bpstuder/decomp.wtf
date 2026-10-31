@@ -22,7 +22,7 @@ services:
     build:
       context: ${DECOMP_CHECKOUT:-..}        # the checkout the image is built from
       dockerfile: site/public/Dockerfile
-    image: decomp-wtf:0.10.6-fork4           # bump with DECOMP_INSTALL_ID on every rebuild
+    image: decomp-wtf:0.10.7-fork11           # bump with DECOMP_INSTALL_ID on every rebuild
     container_name: decomp-wtf
     restart: unless-stopped
     init: true

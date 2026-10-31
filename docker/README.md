@@ -44,7 +44,7 @@ decomp.wtf: installing (the first start takes a few minutes)
 ▸ uv 0.13.1
 ▸ installing decomp.wtf from /usr/local/share/decomp-wtf/src
 $ docker exec <container> decomp update --check
-decomp.wtf 0.10.6 is up to date
+decomp.wtf 0.10.7 is up to date
 ```
 
 ## Publishing it on a tailnet (Tailscale `serve`)
