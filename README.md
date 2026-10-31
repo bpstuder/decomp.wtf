@@ -115,10 +115,10 @@ Can't reach decomp.wtf from your network? The same installer from GitHub (it the
 too):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/main/site/public/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bpstuder/decomp.wtf/main/site/public/install.sh | bash
 ```
 
-**Windows** (PowerShell; new and still unstable: problems are worth an [issue](https://github.com/i12bp8/decomp.wtf/issues))
+**Windows** (PowerShell; new and still unstable: problems are worth an [issue](https://github.com/bpstuder/decomp.wtf/issues))
 
 ```
 irm https://decomp.wtf/install.ps1 | iex
@@ -159,7 +159,7 @@ when needed; you can also add it yourself (`claude mcp add decomp -- decomp mcp`
 
 | Agent | Install it as a package instead |
 | :-- | :-- |
-| **Claude Code** | `/plugin marketplace add i12bp8/decomp.wtf`, then `/plugin install decomp-wtf@decomp-wtf` (adds a "decompile" skill) |
+| **Claude Code** | `/plugin marketplace add bpstuder/decomp.wtf`, then `/plugin install decomp-wtf@decomp-wtf` (adds a "decompile" skill) |
 | **Codex, Antigravity CLI, opencode** | `decomp connect codex`, `decomp connect antigravity`, `decomp connect opencode` |
 
 ## How it works
@@ -362,7 +362,7 @@ full decomp you can port and mod:
 
 **Beta: PlayStation, PlayStation 2, Game Boy Advance and DS.** They work end to end and are tested on homemade
 games, much less on real ones so far. Expect rough edges, and please
-[report](https://github.com/i12bp8/decomp.wtf/issues) what you hit: the app's error panel copies everything an issue
+[report](https://github.com/bpstuder/decomp.wtf/issues) what you hit: the app's error panel copies everything an issue
 needs. Public decomps of any platform run in their own project's build, so their status is the project's.
 
 **From scratch.** splat and spimdisasm split MIPS games, decomp-toolkit analyses GameCube and Wii programs inside a
@@ -395,7 +395,7 @@ browser as usual, and the results are byte-identical to Linux. macOS isn't suppo
 
 **When something goes wrong.** A failed import stays on screen with the reason and what happened, and **Copy for a
 bug report** puts the version, the error and the log on your clipboard for an
-[issue](https://github.com/i12bp8/decomp.wtf/issues). The full log is `.decomp/logs/decomp.log` in your projects folder
+[issue](https://github.com/bpstuder/decomp.wtf/issues). The full log is `.decomp/logs/decomp.log` in your projects folder
 (`~/Decomp`), also at **The full log** in that panel.
 
 ## Development
@@ -432,13 +432,13 @@ and the installed app then follows the branch on GitHub (every new commit pushed
 app: one click installs it).
 
 ```
-git clone -b <branch> https://github.com/i12bp8/decomp.wtf && cd decomp.wtf
+git clone -b <branch> https://github.com/bpstuder/decomp.wtf && cd decomp.wtf
 powershell -ExecutionPolicy Bypass -File site\public\install.ps1      # Windows
 bash site/public/install.sh                                           # Linux
 ```
 
-Without a checkout: `$env:DECOMP_BRANCH = "<branch>"; irm https://raw.githubusercontent.com/i12bp8/decomp.wtf/<branch>/site/public/install.ps1 | iex`
-on Windows, `curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/<branch>/site/public/install.sh | DECOMP_BRANCH=<branch> bash`
+Without a checkout: `$env:DECOMP_BRANCH = "<branch>"; irm https://raw.githubusercontent.com/bpstuder/decomp.wtf/<branch>/site/public/install.ps1 | iex`
+on Windows, `curl -fsSL https://raw.githubusercontent.com/bpstuder/decomp.wtf/<branch>/site/public/install.sh | DECOMP_BRANCH=<branch> bash`
 on Linux. `decomp update` (or the app's Settings) installs the newest commit by hand.
 
 </details>

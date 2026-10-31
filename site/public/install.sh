@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://decomp.wtf/install.sh | bash
 #   (can't reach decomp.wtf? the same from GitHub:
-#    curl -fsSL https://raw.githubusercontent.com/i12bp8/decomp.wtf/main/site/public/install.sh | bash)
+#    curl -fsSL https://raw.githubusercontent.com/bpstuder/decomp.wtf/main/site/public/install.sh | bash)
 #
 # decomp.wtf installs on this computer, with uv:
 #   1. installs uv, Astral's Python tool manager, if you don't have it (asks first)
@@ -23,7 +23,7 @@
 # On a server, decomp.wtf also runs in Docker: docker-compose.yml in the repository.
 set -euo pipefail
 
-VERSION="0.10.6"
+VERSION="0.10.7"
 # Fork: the repository that branch installs and `decomp update` resolve against. Overridable so the
 # Docker image (and any other deployment) can point at a fork without editing this script.
 REPO="${DECOMP_REPO:-bpstuder/decomp.wtf}"
